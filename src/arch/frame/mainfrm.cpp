@@ -314,6 +314,9 @@ void CMainFrame::OnClose()
 	if ( file.Open( strStatusFile, CFile::modeCreate | CFile::modeWrite ) )
 	{
 		CArchive ar(&file, CArchive::store);
+
+		g_pBoard->Suspend(TRUE);
+
 		int nVal, nVal2;
 		try
 		{
@@ -492,6 +495,8 @@ LRESULT CMainFrame::OnReqAcquire(WPARAM wParam, LPARAM lParam)
 				::ClipCursor(&rect);
 			}
 		}
+		g_pBoard->m_keyboard.SetCapsLock((GetKeyState(VK_CAPITAL) & 0x0001) != 0 );
+		g_pBoard->m_keyboard.SetScrollLock((GetKeyState(VK_SCROLL) & 0x0001) != 0);
 	}
 	else
 	{
@@ -808,7 +813,9 @@ void CMainFrame::OnUpdateResume(CCmdUI* pCmdUI)
 }
 
 
-#include <ntddkbd.h>
+//#include <ntddkbd.h>
+#define KEY_MAKE                          0
+#define KEY_BREAK                         1
 
 void CMainFrame::OnRawInput(UINT nInputcode, HRAWINPUT hRawInput)
 {
@@ -853,7 +860,8 @@ void CMainFrame::OnRawInput(UINT nInputcode, HRAWINPUT hRawInput)
 		{
 			wCode |= 0x80;
 		}
-			if (dwCheck == KEY_MAKE)
+
+		if (dwCheck == KEY_MAKE)
 		{
 			g_cDIKeyboard.KeyDown(wCode);
 		}

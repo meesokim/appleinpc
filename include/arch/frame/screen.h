@@ -134,6 +134,7 @@ public:
 	CSurface* m_pSurfaceMain;
 
 	BOOL m_bWindowed;
+	BOOL m_bDoubleSize;
 	CDisplay* m_pDisplay;
 	BYTE m_aiScreenTable[0x2000][2];
 	WORD m_awScanOT[192];
@@ -150,7 +151,7 @@ public:
 	int m_nColumn;
 	DWORD m_adwFrameCheck[FRAME_CHECK_COUNT];
 	double m_dFrameRate;
-
+	bool m_bRelax;
 	void Serialize(CArchive &ar);
 
 public:
@@ -187,19 +188,16 @@ protected:
 	// actual colors by system color depth
 	unsigned int m_uGreen;
 	unsigned int m_uWhite;
-	unsigned int m_auColorTable[16];
-	unsigned int m_auColorTableDark[16];
-	unsigned int m_auColorTableScanLine[16];
-	unsigned int m_auColorTableByHSB[16];		// by HSB
-	unsigned int m_auColorTableByHSBDark[16];		// by HSB
-	unsigned int m_auColorTableByHSBScanLine[16];		// by HSB
+	unsigned int m_auColorTable[16][16];
+	unsigned int m_auColorTableScanLine[16][16];
+	unsigned int m_auColorTableByHSB[16][16];	// by HSB
+	unsigned int m_auColorTableByHSBScanLine[16][16];		// by HSB
 	unsigned int m_uGreenScanLine;
 	unsigned int m_uWhiteScanLine;
 
 	BYTE m_nVideoMode;
 	BOOL m_nMsgVisiable;
 	BOOL m_bTextMode;
-	BOOL m_bTextModeCheck;
 	BOOL m_bMouseCapture;
 
 	TCHAR* m_szMessage;
@@ -252,7 +250,7 @@ public:
 	void SetMessage(TCHAR* szText);
 	void UpdateDiskSurface();
 	CSurface* GetDiskSurface();
-	void SetFullScreenMode(BOOL bFullScreen);
+	void SetScreenMode(BOOL bFullScreen, BOOL bDoubleSize);
 	void Reset();
 	unsigned int ApplyRGBFormat( unsigned int rgb32, LPDDPIXELFORMAT DDpf);
 	unsigned int ApplyDarkRGBFormat( unsigned int rgb32, LPDDPIXELFORMAT lpDDpf, double rate );
@@ -276,6 +274,8 @@ public:
 	void ClearBuffer();
 	void Render();
 	void Run();
+	void Relax();
+	BOOL IsDoubleSized() { return m_bDoubleSize; }
 };
 
 /////////////////////////////////////////////////////////////////////////////

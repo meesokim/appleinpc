@@ -20,6 +20,7 @@
 #include "arch/frame/dlgsettings.h"
 #include "arch/frame/mainfrm.h"
 #include "arch/directx/dxsound.h"
+#include "arch/directx/dikeyboard.h"
 
 #include "appleclock.h"
 #include "localclock.h"
@@ -38,11 +39,16 @@ static char THIS_FILE[] = __FILE__;
 BOOL g_debug = FALSE;
 
 CAppleClock *g_pBoard = NULL;
+extern CDIKeyboard g_cDIKeyboard;
 
 #ifdef _DEBUG
 static int g_breakpoint = -1;
 #endif
 
+#define STATUS_VERSION		(9)
+#define STATUS_MIN_VERSION	(3)
+#define STATUS_MAGIC	0x89617391
+int g_nSerializeVer = 0;
 
 #define LINE_CLOCK			65
 #define DRAW_CLOCK			(LINE_CLOCK*192)	// 12480
@@ -73,7 +79,7 @@ DWORD g_dwVBLClock = VBL_CLOCK;
 DWORD g_dwFrameClock = SCREEN_CLOCK;
 
 // 0.005 sec
-#define BOOST_CLOCK_INTERVAL	( CLOCK/200 )
+#define DRIFT_CLOCK_INTERVAL	( CLOCK/200 )
 
 #undef SEED
 #define SEED	0x10
@@ -91,6 +97,8 @@ CAppleClock::CAppleClock()
 	m_bPALMode = FALSE;
 	m_nMachineType = MACHINE_APPLE2E;
 	m_pCpu = new C65c02();
+	m_bReserveLoadState = FALSE;
+	m_strStateFilePath = TEXT("");
 
 	SetMachineType(MACHINE_APPLE2E, FALSE);
 }
@@ -98,7 +106,8 @@ CAppleClock::CAppleClock()
 CAppleClock::~CAppleClock()
 {
 	// safly exit the thread
-	Exit();
+	//Exit();
+	PowerOff();
 	delete m_pCpu;
 /*
 	DWORD dwExitCode;
@@ -111,30 +120,41 @@ CAppleClock::~CAppleClock()
 */
 }
 
-
 /////////////////////////////////////////////////////////////////////////////
 // CAppleClock message handlers
 void CAppleClock::Run() 
 {
 	// TODO: Add your specialized code here and/or call the base class
-	DWORD measure1, measure2 = 0;
-	DWORD host_interval, apple_interval;
 	DWORD lastAppleClock=m_dwClock;
+	DWORD measure2 = m_dwClock;
 	DWORD dwClockInc;
-	DWORD dwCurTickCount, dwLastTickCount;
-	DWORD dwCPMS = g_dwCPS / 1000;
+	DWORD dwDriftAppleClock = 0;
+	double TPC;		// tic per apple clock
+	double temp;
+	double remain = 0;
+	int nJitter;
+
+	LARGE_INTEGER measure1;
+	LARGE_INTEGER curTickCount, lastTickCount;
+	LARGE_INTEGER freq;
+	LARGE_INTEGER host_interval, apple_interval;
+	LARGE_INTEGER host_interval_hold;
 
 	int sig;
 	BOOL slept;
 	BOOL drawed;
 	int i;
 
+	QueryPerformanceFrequency(&freq);
+	TPC = (double)freq.QuadPart / g_dwCPS;
+
 	slept = FALSE;
 	drawed = FALSE;
 
 	m_pScreen->ClearBuffer();
 
-	dwLastTickCount = measure1 = GetTickCount();
+	QueryPerformanceCounter(&curTickCount);
+	measure1 = lastTickCount = curTickCount;
 
 	m_nAppleStatus = ACS_POWERON;
 
@@ -142,7 +162,9 @@ void CAppleClock::Run()
 		while( TRUE ){
 			if (SuspendHere())
 			{
-				dwLastTickCount = measure1 = GetTickCount();
+				QueryPerformanceCounter(&curTickCount);
+				lastTickCount = curTickCount;
+				measure1 = curTickCount;
 			}
 			if ( ShutdownHere() )
 				return;
@@ -180,14 +202,26 @@ void CAppleClock::Run()
 			m_cSlots.Clock(dwClockInc);
 			g_DXSound.Clock();
 
-			if (m_nBoost > 0)
+			if (m_nDrift > 0 || dwDriftAppleClock > 0)
 			{
-				m_nBoost -= dwClockInc;
-				lastAppleClock += dwClockInc;
-				if (m_nBoost < 0)
+				if (dwDriftAppleClock == 0)
 				{
-					lastAppleClock += m_nBoost;
-					m_nBoost = 0;
+					QueryPerformanceCounter(&curTickCount);
+					host_interval_hold.QuadPart = curTickCount.QuadPart - lastTickCount.QuadPart;
+				}
+
+				m_nDrift -= dwClockInc;
+				dwDriftAppleClock += dwClockInc;
+				if (m_nDrift <= 0)
+				{
+					dwDriftAppleClock += m_nDrift;
+
+					lastAppleClock += dwDriftAppleClock;
+					dwDriftAppleClock = 0;
+					lastTickCount.QuadPart = curTickCount.QuadPart - host_interval_hold.QuadPart;
+
+					m_nDrift = 0;
+					break;
 				}
 			}
 
@@ -210,44 +244,55 @@ void CAppleClock::Run()
 		dwCurClock = this->m_dwClock;
 
 		// measure clock speed
-		dwCurTickCount = GetTickCount();
+		QueryPerformanceCounter(&curTickCount);
 
-		host_interval = dwCurTickCount - measure1;
-		if ( host_interval > 1000 )
+		host_interval.QuadPart = curTickCount.QuadPart - measure1.QuadPart;
+		if (host_interval.QuadPart > freq.QuadPart)	// 1 second
 		{
-			m_dClockSpeed = (double)(dwCurClock - measure2) / host_interval / 1000;
-			measure1 = dwCurTickCount;		// host tick count
+			m_dClockSpeed = (double)(dwCurClock - measure2) / host_interval.QuadPart * freq.QuadPart / 1000000;
+			measure1 = curTickCount;		// host tick count
 			measure2 = dwCurClock;
 		}
 
-		if (dwCurTickCount > dwLastTickCount)
-			host_interval = dwCurTickCount - dwLastTickCount;
-		else
-			host_interval = 0;
-
-		apple_interval = (dwCurClock - lastAppleClock) / dwCPMS;
-
-		if ( (int)(apple_interval - host_interval ) > 0
-			|| host_interval > 500 )
+		if (dwDriftAppleClock > 0)
 		{
-			if ( host_interval > 500 || (int)( apple_interval - host_interval ) > 1000 )
+			continue;
+		}
+
+		host_interval.QuadPart = ( curTickCount.QuadPart - lastTickCount.QuadPart );
+
+		temp = (dwCurClock - lastAppleClock) * TPC + remain;		// convert apple clock to tick count
+		apple_interval.QuadPart = (LONGLONG)temp;
+		remain = temp - apple_interval.QuadPart;
+
+		nJitter = (int)(apple_interval.QuadPart - host_interval.QuadPart);
+		if (nJitter < -freq.QuadPart)	// apple is too slow
+		{
+			// could not chase the apple speed
+			lastTickCount = curTickCount;
+			lastAppleClock = dwCurClock;
+		}
+		else if (nJitter > freq.QuadPart)	// apple is too fast (something wrong)
+		{
+			Sleep(1);
+			lastTickCount = curTickCount;	// adjust host time
+			lastAppleClock = dwCurClock;
+			slept = TRUE;
+		}
+		else if (nJitter > 0)
+		{
+			while ((int)(apple_interval.QuadPart - host_interval.QuadPart) > 0)
 			{
 				Sleep(1);
-				dwLastTickCount = dwCurTickCount;
+				QueryPerformanceCounter(&curTickCount);
+				host_interval.QuadPart = (curTickCount.QuadPart - lastTickCount.QuadPart);
 				slept = TRUE;
 			}
-			else
-			{
-				while( (int)(apple_interval - host_interval ) > 0 )
-				{
-					Sleep(1);
-					host_interval = GetTickCount() - dwLastTickCount;
-					slept = TRUE;
-				}
-				dwLastTickCount += apple_interval;
-			}
-			lastAppleClock += apple_interval * dwCPMS;
+
+			lastTickCount.QuadPart += apple_interval.QuadPart;
+			lastAppleClock = dwCurClock;
 		}
+
 	}
 	m_pScreen->ClearBuffer();
 }
@@ -276,9 +321,11 @@ void CAppleClock::OnConfigureSlots()
 	int stat = m_nAppleStatus;
 	if ( GetIsActive() )
 		Suspend(TRUE);
-	CDlgSettings dlgSettings;
-	dlgSettings.DoModal();
-	if ( GetIsActive() )
+	{
+		CDlgSettings dlgSettings;
+		dlgSettings.DoModal();
+	}
+	if (GetIsActive() || m_bReserveLoadState == TRUE)
 		Resume();
 }
 
@@ -334,6 +381,15 @@ void CAppleClock::Suspend(BOOL bWait)
 
 void CAppleClock::Resume()
 {
+	if (m_bReserveLoadState == TRUE && !m_strStateFilePath.IsEmpty())
+	{
+		CString strStateFilePath = m_strStateFilePath;
+
+		LoadState(m_strStateFilePath);
+		m_bReserveLoadState = FALSE;
+
+		m_strStateFilePath = strStateFilePath;
+	}
 	CCustomThread::Resume();
 	g_DXSound.Resume();
 }
@@ -369,6 +425,10 @@ DWORD CAppleClock::GetClock()
 // do not call in apple thread. it will cause dead lock.
 void CAppleClock::Exit()
 {
+	if (m_bSaveStateOnExit == TRUE && !m_strStateFilePath.IsEmpty())
+	{
+		SaveState(m_strStateFilePath);
+	}
 	PowerOff();
 }
 
@@ -399,12 +459,13 @@ void CAppleClock::OnAfterDeactivate()
 
 void CAppleClock::SpeedUp()
 {
-	m_nBoost = BOOST_CLOCK_INTERVAL;
+	m_nDrift = DRIFT_CLOCK_INTERVAL;
+	m_pScreen->Relax();
 }
 
 void CAppleClock::SpeedStable()
 {
-	m_nBoost = 0;
+	m_nDrift = 0;
 }
 
 void CAppleClock::SetMachineType(int nMachineType, BOOL bPalMode)
@@ -486,13 +547,109 @@ void CAppleClock::Serialize( CArchive &ar )
 
 		if ( m_nAppleStatus == ACS_POWERON )
 		{
+			Suspend(FALSE);
 			PowerOn();
 		}
 	}
-	if ( bActive )
-	{
-		Resume();
-	}
+}
 
+BOOL CAppleClock::SaveState(CString strPath)
+{
+	CFile file;
+	BOOL bSuccess = FALSE;
+
+	if (file.Open(strPath, CFile::modeCreate | CFile::modeWrite))
+	{
+		CArchive ar(&file, CArchive::store);
+
+		bSuccess = TRUE;
+		g_pBoard->Suspend(TRUE);
+
+		int nVal, nVal2;
+		try
+		{
+			g_nSerializeVer = STATUS_VERSION;
+
+			ar << STATUS_MAGIC;
+			ar << STATUS_VERSION;
+			nVal = 0;
+			ar << nVal;		// double size (not used)
+			g_pBoard->Serialize(ar);
+			ar << g_DXSound.GetPan();
+			ar << g_DXSound.GetVolume();
+			ar << g_DXSound.m_bMute;
+			g_cDIKeyboard.GetDelayTime(&nVal, &nVal2);
+			ar << nVal;
+			ar << nVal2;
+			ar << m_strStateFilePath;
+			ar << m_bSaveStateOnExit;
+		}
+		catch (CFileException* fe)
+		{
+			(void)fe;
+			bSuccess = FALSE;
+		}
+		catch (CArchiveException* ae)
+		{
+			(void)ae;
+			bSuccess = FALSE;
+		}
+		ar.Close();
+		file.Close();
+	}
+	return bSuccess;
+}
+
+BOOL CAppleClock::LoadState(CString strPath)
+{
+	CFile file;
+	BOOL bSuccess = FALSE;
+
+	if (file.Open(strPath, CFile::modeRead))
+	{
+		int nVal, nVal2;
+
+		bSuccess = TRUE;
+		CArchive ar(&file, CArchive::load);
+		try
+		{
+			ar >> nVal;
+			ar >> nVal2;
+			if (nVal != STATUS_MAGIC || nVal2 < STATUS_MIN_VERSION)
+			{
+				throw new CArchiveException();
+			}
+			g_nSerializeVer = nVal2;
+
+			ar >> nVal;		// double size
+			g_pBoard->Serialize(ar);
+			ar >> nVal;
+			g_DXSound.SetPan(nVal);
+			ar >> nVal;
+			g_DXSound.SetVolume(nVal);
+			ar >> g_DXSound.m_bMute;
+			ar >> nVal;
+			ar >> nVal2;
+			g_cDIKeyboard.SetDelayTime(nVal, nVal2);
+			if (g_nSerializeVer >= 9)
+			{
+				ar >> m_strStateFilePath;
+				ar >> m_bSaveStateOnExit;
+			}
+		}
+		catch (CFileException* fe)
+		{
+			(void)fe;
+			bSuccess = FALSE;
+		}
+		catch (CArchiveException* ae)
+		{
+			(void)ae;
+			bSuccess = FALSE;
+		}
+		ar.Close();
+		file.Close();
+	}
+	return bSuccess;
 }
 

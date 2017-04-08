@@ -99,9 +99,9 @@ BEGIN
     END
     POPUP "&Edit"
     BEGIN
-        MENUITEM "&Settings..\tF10",            ID_CONFIGURE_SLOTS
-        MENUITEM "&Diskette..\tF9",             ID_DISKETTE
-        MENUITEM "&Hard Disk..\tCtrl-F9",       ID_HARDDISK
+        MENUITEM "&Settings...\tF10",           ID_CONFIGURE_SLOTS
+        MENUITEM "&Diskette...\tF9",            ID_DISKETTE
+        MENUITEM "&Hard Disk...\tCtrl-F9",      ID_HARDDISK
         MENUITEM SEPARATOR
         MENUITEM "Change &Monitor\tF8",         ID_MONITOR
         MENUITEM "&2x Screen Mode",             ID_2XSCREEN
@@ -110,11 +110,12 @@ BEGIN
     END
     POPUP "&Debug"
     BEGIN
-        MENUITEM "&Debug..",                    ID_DEBUG
+        MENUITEM "&Debug...",                   ID_DEBUG
     END
     POPUP "&Help"
     BEGIN
-        MENUITEM "&About..",                    ID_APP_ABOUT
+        MENUITEM "&About...",                   ID_APP_ABOUT
+        MENUITEM "&CommandLine Usage...",       ID_HELP_COMMANDLINEUSAGE
     END
 END
 
@@ -137,8 +138,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,1,39,2
- PRODUCTVERSION 0,1,39,2
+ FILEVERSION 0,1,41,2
+ PRODUCTVERSION 0,1,41,2
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -154,12 +155,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Apple in PC"
-            VALUE "FileVersion", "0.1.39.2"
+            VALUE "FileVersion", "0.1.41.2"
             VALUE "InternalName", "aipc"
-            VALUE "LegalCopyright", "Copyright © 2002-2016"
+            VALUE "LegalCopyright", "Copyright ?2002-2016"
             VALUE "OriginalFilename", "aipc.exe"
             VALUE "ProductName", "Apple in PC"
-            VALUE "ProductVersion", "0.1.39.2"
+            VALUE "ProductVersion", "0.1.41.2"
         END
     END
     BLOCK "VarFileInfo"
@@ -192,6 +193,14 @@ IDB_HDD                 BITMAP                  "res\\hdd.bmp"
 
 IDR_TOOLBAR             BITMAP                  "res\\toolbar1.bmp"
 
+IDB_KEY_CAPS            BITMAP                  "res\\key_caps.bmp"
+
+IDB_KEY_SCROLL          BITMAP                  "res\\key_scroll.bmp"
+
+IDB_KEY_CAPS_OFF        BITMAP                  "res\\key_caps_off.bmp"
+
+IDB_KEY_SCROLL_OFF      BITMAP                  "res\\key_scroll_off.bmp"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -210,14 +219,15 @@ IDC_CURSOR2             CURSOR                  "res\\cursor2.cur"
 
 IDR_ACCELERATOR ACCELERATORS
 BEGIN
-    VK_CANCEL,      ID_RESET,               VIRTKEY, CONTROL, NOINVERT
     VK_F10,         ID_CONFIGURE_SLOTS,     VIRTKEY, NOINVERT
+    VK_F9,          ID_DISKETTE,            VIRTKEY, NOINVERT
+    VK_F8,          ID_FULL_SCREEN,         VIRTKEY, CONTROL, NOINVERT
+    VK_F9,          ID_HARDDISK,            VIRTKEY, CONTROL, NOINVERT
+    VK_F8,          ID_MONITOR,             VIRTKEY, NOINVERT
     VK_F11,         ID_POWER,               VIRTKEY, CONTROL, NOINVERT
     VK_F11,         ID_REBOOT,              VIRTKEY, SHIFT, CONTROL, NOINVERT
-    VK_F8,          ID_MONITOR,             VIRTKEY, NOINVERT
-    VK_F8,          ID_FULL_SCREEN,         VIRTKEY, CONTROL, NOINVERT
-    VK_F9,          ID_DISKETTE,            VIRTKEY, NOINVERT
-    VK_F9,          ID_HARDDISK,            VIRTKEY, CONTROL, NOINVERT
+    VK_CANCEL,      ID_RESET,               VIRTKEY, CONTROL, NOINVERT
+    VK_F5,          ID_SUSPENDRESUME,       VIRTKEY, NOINVERT
 END
 
 
@@ -293,21 +303,30 @@ BEGIN
     CONTROL         "PC Joystick",IDC_JOYSTICK_PCJOYSTICK,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,110,80,64,9
     COMBOBOX        IDC_JOYDEAD,53,98,40,76,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     COMBOBOX        IDC_JOYSAT,141,98,40,75,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Joystick",IDC_STATIC,7,66,186,56
+    GROUPBOX        "Joystick",IDC_STATIC,7,66,186,83
     LTEXT           "Saturation",IDC_STATIC,101,102,40,8
     LTEXT           "Dead Zone",IDC_STATIC,11,102,37,8
+    CONTROL         "Use arrow keys as paddles when scroll-lock on",IDC_ARRAW_AS_PADDLE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,133,163,10
+    CONTROL         "Swap button 1,2",IDC_SWAP_BUTTON_1_2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,119,69,10
 END
 
 IDD_SETTINGS_MACHINE DIALOGEX 0, 0, 200, 189
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    CONTROL         "Apple ][+",IDC_MACHINE_2PLUS,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,17,51,50,9
-    CONTROL         "Apple //e",IDC_MACHINE_2E,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,69,51,51,9
-    CONTROL         "Apple IIc",IDC_MACHINE_2C,"Button",BS_AUTORADIOBUTTON | WS_DISABLED | WS_TABSTOP,125,51,49,9
-    CONTROL         "NTSC",IDC_MACHINE_NTSC,"Button",BS_AUTORADIOBUTTON | WS_GROUP,17,67,39,9
-    CONTROL         "PAL",IDC_MACHINE_PAL,"Button",BS_AUTORADIOBUTTON,69,67,34,9
-    GROUPBOX        "Machine",IDC_STATIC,7,37,186,45
+    CONTROL         "Apple ][+",IDC_MACHINE_2PLUS,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,17,38,50,9
+    CONTROL         "Apple //e",IDC_MACHINE_2E,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,69,38,51,9
+    CONTROL         "Apple IIc",IDC_MACHINE_2C,"Button",BS_AUTORADIOBUTTON | WS_DISABLED | WS_TABSTOP,121,38,49,9
+    CONTROL         "NTSC",IDC_MACHINE_NTSC,"Button",BS_AUTORADIOBUTTON | WS_GROUP,17,54,39,9
+    CONTROL         "PAL",IDC_MACHINE_PAL,"Button",BS_AUTORADIOBUTTON,69,54,34,9
+    GROUPBOX        "Machine",IDC_STATIC,7,24,186,45
+    GROUPBOX        "Save State",IDC_STATIC,7,86,186,67
+    EDITTEXT        IDC_STATE_FILENAME,14,102,129,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_STATE_BROWSE,147,102,39,12
+    PUSHBUTTON      "Load",IDC_STATE_LOAD,80,133,50,12
+    PUSHBUTTON      "Save",IDC_STATE_SAVE,136,133,50,12
+    CONTROL         "Save state on exit",IDC_SAVE_STATE_ON_EXIT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,119,75,10
 END
 
 IDD_SETTINGS_COLOR DIALOGEX 0, 0, 200, 189
@@ -370,8 +389,8 @@ CAPTION "Apple in PC"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
     ICON            IDR_MAINFRAME,IDC_STATIC,7,7,20,20
-    LTEXT           "Apple in PC v0.1.39.2",IDC_STATIC,40,10,119,8,SS_NOPREFIX
-    LTEXT           "Copyright (C) 2002-2016",IDC_STATIC,40,62,79,8
+    LTEXT           "Apple in PC v0.1.41.2",IDC_STATIC,40,10,119,8,SS_NOPREFIX
+    LTEXT           "Copyright (C) 2002-2017",IDC_STATIC,40,62,79,8
     DEFPUSHBUTTON   "&OK",IDOK,125,56,50,14,WS_GROUP
     LTEXT           "https://github.com/sosaria7/appleinpc",IDC_STATIC,40,38,129,8
     LTEXT           "sosaria7@gmail.com",IDC_STATIC,40,24,94,8
@@ -408,10 +427,10 @@ FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "&OK",IDOK,111,90,50,14
     PUSHBUTTON      "&Cancel",IDCANCEL,165,90,50,14
-    EDITTEXT        IDC_EDIT_FILENAME1,13,28,180,12,ES_AUTOHSCROLL
-    PUSHBUTTON      "..",IDC_BTN_BROWSE1,196,28,12,12
-    EDITTEXT        IDC_EDIT_FILENAME2,13,61,180,12,ES_AUTOHSCROLL
-    PUSHBUTTON      "..",IDC_BTN_BROWSE2,196,61,12,12
+    EDITTEXT        IDC_EDIT_FILENAME1,13,28,155,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BTN_BROWSE1,172,28,39,12
+    EDITTEXT        IDC_EDIT_FILENAME2,13,61,155,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BTN_BROWSE2,172,61,39,12
     CONTROL         "Disk 1",IDC_CHK_DISK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,17,37,10
     CONTROL         "Disk 2",IDC_CHK_DISK2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,49,37,10
     CONTROL         "Enhanced",IDC_ENHANCED_DISK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,60,17,48,10
@@ -442,12 +461,26 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Configure HDD"
 FONT 8, "MS Sans Serif", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "&OK",IDOK,111,73,50,14
-    PUSHBUTTON      "&Cancel",IDCANCEL,165,73,50,14
-    EDITTEXT        IDC_EDIT_FILENAME1,13,40,180,12,ES_AUTOHSCROLL
-    PUSHBUTTON      "..",IDC_BTN_BROWSE1,196,39,12,12
+    DEFPUSHBUTTON   "&OK",IDOK,111,73,57,14
+    PUSHBUTTON      "&Cancel",IDCANCEL,168,73,47,14
+    EDITTEXT        IDC_EDIT_FILENAME1,13,40,155,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BTN_BROWSE1,172,39,39,12
     CONTROL         "Mount",IDC_CHK_DISK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,23,37,10
     GROUPBOX        "HDD Image",IDC_STATIC1,7,6,208,62
+END
+
+IDD_CMD_USAGE DIALOGEX 0, 0, 259, 138
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "CommandLine Usage"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,202,117,50,14
+    LTEXT           "-d1 <path>\t : start with a disk in drive-1",IDC_STATIC,18,20,234,8
+    LTEXT           "-d2 <path>\t : start with a disk in drive-2",IDC_STATIC,18,34,234,8
+    LTEXT           "-h <path>\t : start with a hard disk drive",IDC_STATIC,18,48,234,8
+    LTEXT           "-w\t\t : save state on exit (state file path required)",IDC_STATIC,18,76,234,8
+    LTEXT           "-s <path>\t : load a state file at startup",IDC_STATIC,18,62,234,8
+    LTEXT           "-r\t\t : reboot at startup",IDC_STATIC,18,89,234,8
 END
 
 
@@ -512,8 +545,15 @@ BEGIN
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 193
+        VERTGUIDE, 14
+        VERTGUIDE, 143
+        VERTGUIDE, 147
+        VERTGUIDE, 186
         TOPMARGIN, 7
         BOTTOMMARGIN, 182
+        HORZGUIDE, 114
+        HORZGUIDE, 129
+        HORZGUIDE, 145
     END
 
     IDD_SETTINGS_COLOR, DIALOG
@@ -552,8 +592,9 @@ BEGIN
         RIGHTMARGIN, 215
         VERTGUIDE, 13
         VERTGUIDE, 111
-        VERTGUIDE, 193
-        VERTGUIDE, 196
+        VERTGUIDE, 168
+        VERTGUIDE, 172
+        VERTGUIDE, 211
         TOPMARGIN, 5
         BOTTOMMARGIN, 104
         HORZGUIDE, 40
@@ -574,11 +615,28 @@ BEGIN
         RIGHTMARGIN, 215
         VERTGUIDE, 13
         VERTGUIDE, 111
-        VERTGUIDE, 193
-        VERTGUIDE, 196
+        VERTGUIDE, 168
+        VERTGUIDE, 172
+        VERTGUIDE, 211
         TOPMARGIN, 5
         BOTTOMMARGIN, 87
         HORZGUIDE, 51
+    END
+
+    IDD_CMD_USAGE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 252
+        VERTGUIDE, 18
+        VERTGUIDE, 68
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 131
+        HORZGUIDE, 28
+        HORZGUIDE, 42
+        HORZGUIDE, 56
+        HORZGUIDE, 70
+        HORZGUIDE, 84
+        HORZGUIDE, 97
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -722,6 +780,11 @@ BEGIN
     0
 END
 
+IDD_CMD_USAGE AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -782,6 +845,7 @@ BEGIN
     ID_INDICATOR_CLOCK_SPEED "clock"
     ID_INDICATOR_FRAME_SPEED "frame"
     ID_INDICATOR_DISK       "disk"
+    ID_INDICATOR_KEY_STATUS "keys"
 END
 
 STRINGTABLE

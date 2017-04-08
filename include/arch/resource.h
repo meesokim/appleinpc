@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by C:\Project\night\appleinpc\aipc.rc
+// Used by F:\Project\night_project\appleinpc\aipc.rc
 //
 #define IDC_DEFAULT                     3
 #define IDD_ABOUTBOX                    100
@@ -8,6 +8,7 @@
 #define ID_INDICATOR_CLOCK_SPEED        106
 #define ID_INDICATOR_FRAME_SPEED        107
 #define ID_INDICATOR_DISK               108
+#define ID_INDICATOR_KEY_STATUS         109
 #define IDR_MAINFRAME                   128
 #define IDR_APPLE2TYPE                  129
 #define IDD_DEBUG                       130
@@ -38,6 +39,11 @@
 #define IDD_SETTINGS_INPUT              173
 #define IDD_SETTINGS_MACHINE            175
 #define IDD_SETTINGS_COLOR              177
+#define IDB_KEY_CAPS                    183
+#define IDB_KEY_SCROLL                  184
+#define IDB_KEY_CAPS_OFF                185
+#define IDB_KEY_SCROLL_OFF              186
+#define IDD_CMD_USAGE                   187
 #define IDC_LIST_PROCESS                1000
 #define IDC_EDIT_FILENAME2              1001
 #define IDC_BTN_SLOT1                   1002
@@ -157,6 +163,13 @@
 #define IDC_MACHINE_NTSC                1126
 #define IDC_MACHINE_PAL                 1127
 #define IDC_SETTINGS_TAB                1128
+#define IDC_SWAP_BUTTON_1_2             1129
+#define IDC_ARRAW_AS_PADDLE             1130
+#define IDC_STATE_FILENAME              1131
+#define IDC_STATE_BROWSE                1132
+#define IDC_STATE_LOAD                  1133
+#define IDC_STATE_SAVE                  1134
+#define IDC_SAVE_STATE_ON_EXIT          1135
 #define ID_DEBUG                        32771
 #define ID_CONFIGURE_SLOTS              32772
 #define ID_REBOOT                       32773
@@ -175,6 +188,8 @@
 #define ID_SCANLINE                     32794
 #define ID_SUSPEND                      32795
 #define ID_RESUME                       32796
+#define ID_SUSPENDRESUME                32804
+#define ID_HELP_COMMANDLINEUSAGE        32806
 #define ID_SLOT_NONE                    33000
 #define ID_SLOT_DISK                    33001
 #define ID_SLOT_MOCKINGBOARD            33002
@@ -204,9 +219,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        183
-#define _APS_NEXT_COMMAND_VALUE         32801
-#define _APS_NEXT_CONTROL_VALUE         1129
+#define _APS_NEXT_RESOURCE_VALUE        189
+#define _APS_NEXT_COMMAND_VALUE         32807
+#define _APS_NEXT_CONTROL_VALUE         1136
 #define _APS_NEXT_SYMED_VALUE           111
 #endif
 #endif

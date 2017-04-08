@@ -19,7 +19,7 @@ Source download:
   https://github.com/sosaria7/appleinpc
 
 Latest release:
-  [Apple in PC 0.1.39.2](https://github.com/sosaria7/appleinpc/releases/download/0.1.39.2/aipc_0.1.39.2.zip)
+  https://github.com/sosaria7/appleinpc/releases/latest
 
 Screen shots:
   https://github.com/sosaria7/appleinpc/wiki/Apple-in-PC---Screen-Shot

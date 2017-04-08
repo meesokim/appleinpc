@@ -71,6 +71,7 @@ CScreen::CScreen()
 
 	m_nMsgVisiable = 0;
 	m_bWindowed = TRUE;
+	m_bDoubleSize = FALSE;
 //	m_bInitializing = FALSE;
 	m_iScrMode = SS_TEXT;
 	m_szMessage = "";
@@ -81,7 +82,7 @@ CScreen::CScreen()
 							ANTIALIASED_QUALITY, FF_DONTCARE, "Arial Narrow" );
 	m_bPreview = FALSE;
 	m_bTextMode = TRUE;
-	m_bTextModeCheck = TRUE;
+	m_bRelax = false;
 	SetDefaultColors();
 }
 
@@ -157,18 +158,10 @@ void CScreen::Draw( int nLine, int nColumn )
 	
 	if ( m_iScrMode & SS_80STORE )		// display page 2 only if 80STORE is off
 		mode &= ~SS_PAGE2;
-	
-	if (nLine == 0 && nColumn == 0)
-	{
-		m_bTextModeCheck = ((m_iScrMode & SS_TEXT) != 0);
-	}
-	else if ((m_iScrMode & SS_TEXT) == 0)
-	{
-		m_bTextModeCheck = FALSE;
-	}
+
 	if (nLine == 191 && nColumn == 39)
 	{
-		m_bTextMode = m_bTextModeCheck;
+		m_bTextMode = ((m_iScrMode & SS_TEXT) != 0);
 	}
 
 	y = nLine;
@@ -303,7 +296,7 @@ void CScreen::Draw( int nLine, int nColumn )
 	{
 		if ( ( data & 1 ) != 0 )
 		{
-			pixelInfo[x] = color;
+			pixelInfo[x] = (BYTE)color;
 		}
 		else
 		{
@@ -359,7 +352,7 @@ BOOL CScreen::IsVBL()
 void CScreen::Redraw()
 {
 	this->WakeUp();
-	Sleep(1);
+	Sleep(0);
 }
 
 void CScreen::Run()
@@ -384,6 +377,7 @@ void CScreen::Run()
 
 	while (TRUE)
 	{
+		m_bRelax = false;
 		dwTickStart = GetTickCount();
 		SuspendHere();
 		if (ShutdownHere())
@@ -415,8 +409,8 @@ void CScreen::Run()
 			}
 		}
 		dwElasped = GetTickCount() - dwTickStart;
-		if ( dwElasped < 1000/70 )		// max 70 frame
-			Sleep(1000/70 - dwElasped);
+		if (m_bRelax == true && dwElasped < 1000/30 )
+			Sleep(1000/30 - dwElasped);
 	}
 	m_bPowerOn = FALSE;
 	Render();
@@ -475,9 +469,9 @@ void CScreen::Render()
 	BYTE *pixelInfo;
 	int colorDepth = m_iColorDepth >> 3;
 	int x, y;
-	unsigned int* colorTable = NULL;
-	unsigned int* colorTableDark = NULL;
-	unsigned int* colorTableScanLine = NULL;
+	typedef unsigned int TColorArr[16];		// color with 16 grade brightness
+	TColorArr* colorTable = NULL;
+	TColorArr* colorTableScanLine = NULL;
 	//	_int64 color;
 	int color = 0;
 	int colorScanLine = 0;
@@ -489,26 +483,24 @@ void CScreen::Render()
 		if (m_bTextMode == FALSE )
 		{
 			colorTable = m_auColorTableByHSB;
-			colorTableDark = m_auColorTableByHSBDark;
 			colorTableScanLine = m_auColorTableByHSBScanLine;
 		}
 		else
 		{
-			color = m_auColorTableByHSB[15];
-			colorScanLine = m_auColorTableByHSBScanLine[15];
+			color = m_auColorTableByHSB[15][15];
+			colorScanLine = m_auColorTableByHSBScanLine[15][15];
 		}
 		break;
 	case SM_COLOR2:
 		if (m_bTextMode == FALSE )
 		{
 			colorTable = m_auColorTable;
-			colorTableDark = m_auColorTableDark;
 			colorTableScanLine = m_auColorTableScanLine;
 		}
 		else
 		{
-			color = m_auColorTable[15];
-			colorScanLine = m_auColorTableScanLine[15];
+			color = m_auColorTable[15][15];
+			colorScanLine = m_auColorTableScanLine[15][15];
 		}
 		break;
 	case SM_WHITE:
@@ -534,25 +526,27 @@ void CScreen::Render()
 		pixelInfo = m_pixelInfo[y] + 2;
 		
 		BYTE colorIndex = 0;
-		UINT* curColorTable;
+
 		UINT curColor, curColor2;
+		unsigned int brightness;
 		colorIndex = pixelInfo[0];
-		
+
+		brightness = !!(pixelInfo[0] & 0x0f);
+
 		for (x = 0; x < WIN_WIDTH; x++)
 		{
 			if (colorTable != NULL)
 			{
-				if (pixelInfo[x] == 0)
-					curColorTable = colorTableDark;
-				else
-					curColorTable = colorTable;
-				colorIndex = pixelInfo[x - 2];
-				colorIndex += pixelInfo[x - 1];
-				colorIndex += pixelInfo[x];
-				colorIndex += pixelInfo[x + 1];
-				colorIndex &= 0x0f;
-				curColor = curColorTable[colorIndex];
-				curColor2 = colorTableScanLine[colorIndex];
+				brightness = ( brightness << 1 ) & 0x0f;
+				if (pixelInfo[x + 1] & 0x0f)
+					brightness |= 1;
+				colorIndex = ( pixelInfo[x - 2]
+							+ pixelInfo[x - 1]
+							+ pixelInfo[x]
+							+ pixelInfo[x + 1] ) & 0x0f;
+
+				curColor = colorTable[colorIndex][brightness];
+				curColor2 = colorTableScanLine[colorIndex][brightness];
 			}
 			else
 			{
@@ -879,13 +873,10 @@ HRESULT CScreen::Present()
 			{
 				return E_FAIL;
 			}
-            //hr = m_pDisplay->GetFrontBuffer()->Blt( &rect, m_pDisplay->GetBackBuffer(),
             hr = m_pDisplay->GetFrontBuffer()->Blt( &rect, lpdds, NULL, DDBLT_WAIT, NULL );
 		}
         else
 		{
-//			m_pDisplay->Blt( 0, 0, m_pSurfaceDisk, NULL );
-			RECT rect = { 0, 0, WIN_WIDTH, WIN_WIDTH };
 			lpdds = m_pSurfaceMain->GetDDrawSurface();
 			if ( lpdds == NULL )
 			{
@@ -1072,13 +1063,39 @@ sYIQ CScreen::ComposeYIQ( sYIQ* yiq1, sYIQ* yiq2 )
 	return yiq;
 }
 
+// bright affection by pixel distance
+#define BRIGHT_BASE		(1.0/((1+BRIGHT_8)*(1+BRIGHT_4)*(1+BRIGHT_2)*(1+BRIGHT_1)))
+#define BRIGHT_8		.00		// 2 left pixel
+#define BRIGHT_4		.05		// left pixel
+#define BRIGHT_2		.15		// target pixel
+#define BRIGHT_1		.05		// right pixel
+#define BRIGHT(a,b,c,d)	(BRIGHT_BASE*(1+BRIGHT_8*a)*(1+BRIGHT_4*b)*(1+BRIGHT_2*c)*(1+BRIGHT_1*d))
 void CScreen::ApplyColors()
 {
-	int i;
+	int i, j;
 	
 	CLockMgr<CCSWrapper> guard( m_Lock, TRUE );	
-
+	
 	DDPIXELFORMAT DDpf;
+
+	static const double bright[16] = {
+		.00,
+		BRIGHT(0,0,0,1),
+		BRIGHT(0,0,1,0),
+		BRIGHT(0,0,1,1),
+		BRIGHT(0,1,0,0),
+		BRIGHT(0,1,0,1),
+		BRIGHT(0,1,1,0),
+		BRIGHT(0,1,1,1),
+		BRIGHT(1,0,0,0),
+		BRIGHT(1,0,0,1),
+		BRIGHT(1,0,1,0),
+		BRIGHT(1,0,1,1),
+		BRIGHT(1,1,0,0),
+		BRIGHT(1,1,0,1),
+		BRIGHT(1,1,1,0),
+		BRIGHT(1,1,1,1)
+	};
 	DDpf.dwSize = sizeof(DDPIXELFORMAT);
 	m_pDisplay->GetFrontBuffer()->GetPixelFormat(&DDpf);
 	
@@ -1086,12 +1103,13 @@ void CScreen::ApplyColors()
 	
 	for( i = 0; i < 16; i++ )
 	{
-		m_auColorTableByHSB[i] = ApplyRGBFormat( m_auRGBColorByHSB[i], &DDpf );
-		m_auColorTableByHSBDark[i] = ApplyDarkRGBFormat( m_auRGBColorByHSB[i], &DDpf, .8 );
-		m_auColorTableByHSBScanLine[i] = ApplyDarkRGBFormat( m_auRGBColorByHSB[i], &DDpf, .5 );
-		m_auColorTable[i] = ApplyRGBFormat( m_auRGBColor[i], &DDpf );
-		m_auColorTableDark[i] = ApplyDarkRGBFormat( m_auRGBColor[i], &DDpf, .8 );
-		m_auColorTableScanLine[i] = ApplyDarkRGBFormat( m_auRGBColor[i], &DDpf, .5 );
+		for(j = 0; j < 16; j++)
+		{
+			m_auColorTableByHSB[i][j] = ApplyDarkRGBFormat(m_auRGBColorByHSB[i], &DDpf, bright[j]);
+			m_auColorTable[i][j] = ApplyDarkRGBFormat(m_auRGBColor[i], &DDpf, bright[j]);
+			m_auColorTableByHSBScanLine[i][j] = ApplyDarkRGBFormat(m_auRGBColorByHSB[i], &DDpf, bright[j] * .7);
+			m_auColorTableScanLine[i][j] = ApplyDarkRGBFormat(m_auRGBColor[i], &DDpf, bright[j] * .7);
+		}
 	}
 
 	m_uWhite = ApplyRGBFormat( m_uRGBMono, &DDpf );
@@ -1389,9 +1407,10 @@ void CScreen::OnMove(int x, int y)
 	// TODO: Add your message handler code here
 }
 
-void CScreen::SetFullScreenMode(BOOL bFullScreen)
+void CScreen::SetScreenMode(BOOL bFullScreen, BOOL bDoubleSize)
 {
 	BOOL bWindowed = !bFullScreen;
+	m_bDoubleSize = bDoubleSize;
 	if ( m_bWindowed != bWindowed )
 	{
 		BOOL suspended = g_pBoard->GetIsSuspended();
@@ -1598,6 +1617,7 @@ void CScreen::Serialize(CArchive &ar)
 		ar << m_bScanline;
 		ar << m_dwClock;
 		ar << m_dataLatch;
+		ar << m_bDoubleSize;
 	}
 	else
 	{
@@ -1619,7 +1639,10 @@ void CScreen::Serialize(CArchive &ar)
 			m_nLine = m_dwClock / 65;
 			m_nColumn = m_dwClock % 65;
 		}
-
+		if (g_nSerializeVer >= 9)
+		{
+			ar >> m_bDoubleSize;
+		}
 		SetHSB( m_uHSB );
 		ApplyColors();
 		RedrawAll();
@@ -1634,4 +1657,9 @@ void CScreen::ClearBuffer()
 void CScreen::SetMouseCapture(BOOL bCapture)
 {
 	m_bMouseCapture = bCapture;
+}
+
+void CScreen::Relax()
+{
+	m_bRelax = true;
 }

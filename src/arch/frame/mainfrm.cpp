@@ -13,6 +13,8 @@
 #include "arch/directx/dijoystick.h"
 #include "arch/directx/dikeyboard.h"
 #include "arch/directx/dimouse.h"
+#include "arch/CommandLineOption.h"
+
 #include "keyboard.h"
 #include "card.h"
 #include "phasor.h"
@@ -28,13 +30,9 @@ static char THIS_FILE[] = __FILE__;
 CDIJoystick g_cDIJoystick;
 CDIKeyboard g_cDIKeyboard;
 CDIMouse	g_cDIMouse;
-int g_nSerializeVer = 0;
 
 static CString GetStatusFilePath();
 
-#define STATUS_VERSION		(7)
-#define STATUS_MIN_VERSION	(3)
-#define STATUS_MAGIC	0x89617391
 
 /////////////////////////////////////////////////////////////////////////////
 // CMainFrame
@@ -80,6 +78,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	//}}AFX_MSG_MAP
 	ON_COMMAND(ID_SUSPEND, &CMainFrame::OnSuspend)
 	ON_COMMAND(ID_RESUME, &CMainFrame::OnResume)
+	ON_COMMAND(ID_SUSPENDRESUME, &CMainFrame::OnSuspendResume)
 	ON_WM_INPUT()
 END_MESSAGE_MAP()
 
@@ -108,6 +107,7 @@ CMainFrame::~CMainFrame()
 
 int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
+	BOOL bRet;
 	if (CFrameWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 
@@ -147,8 +147,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	// Initialise Joystick
 	g_cDIJoystick.SetHWND(m_hWnd);
-	if ( g_cDIJoystick.InitJoystick() )
-		g_pBoard->m_joystick.m_bHasPCJoystick = TRUE;
+	g_pBoard->m_joystick.InitPCJoystick();
 
 	// Initialise Keyboard
 	g_cDIKeyboard.SetHWND(m_hWnd);
@@ -161,62 +160,61 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_cMenu.LoadMenu( IDR_MAINFRAME );
 	SetMenu( &m_cMenu );
 
+	CCommandLineOption option;
+	bRet = option.Parse(GetCommandLine());
+	if (bRet == FALSE)
+	{
+		CString strMessage;
+		strMessage.Format(TEXT("%s"), option.m_strErrorMsg);
+		this->MessageBox(strMessage, TEXT("Error - Apple in PC"), MB_OK);
+		exit(1);
+	}
 
 	g_pBoard->Initialize();
 //	g_pBoard->CreateThread();
 //	g_pBoard->SetThreadPriority(THREAD_PRIORITY_ABOVE_NORMAL);
+	CFileStatus fileStatus;
+	CString strStatusFile;
 
+	if (!option.m_strStatePath.IsEmpty())
+		strStatusFile = option.m_strStatePath;
+	else
+		strStatusFile = GetStatusFilePath();
 
-	CFile file;
-	CString strStatusFile = GetStatusFilePath();
-	if ( file.Open( strStatusFile, CFile::modeRead ) )
+	// if regular file exists
+	if (CFile::GetStatus(strStatusFile, fileStatus) == TRUE && (fileStatus.m_attribute & CFile::Attribute::directory) == 0)
 	{
-		int nVal, nVal2;
-		BOOL bError = FALSE;
-		CArchive ar(&file, CArchive::load);
-		try
-		{
-			ar >> nVal;
-			ar >> nVal2;
-			if ( nVal != STATUS_MAGIC || nVal2 < STATUS_MIN_VERSION )
-			{
-				throw new CArchiveException();
-			}
-			g_nSerializeVer = nVal2;
-
-			ar >> m_bDoubleSize;
-			g_pBoard->Serialize(ar);
-			ar >> nVal;
-			g_DXSound.SetPan( nVal );
-			ar >> nVal;
-			g_DXSound.SetVolume( nVal );
-			ar >> g_DXSound.m_bMute;
-			ar >> nVal;
-			ar >> nVal2;
-			g_cDIKeyboard.SetDelayTime( nVal, nVal2 );
-		}
-		catch (CFileException* fe)
-		{
-			(void)fe;
-			bError = TRUE;
-		}
-		catch (CArchiveException* ae)
-		{
-			(void)ae;
-			bError = TRUE;
-		}
-		ar.Close();
-		file.Close();
-		if ( bError == TRUE )
+		if (g_pBoard->LoadState(strStatusFile) == FALSE)
 		{
 			CString strMessage;
-			this->MessageBox( TEXT("Fail to load last state"), TEXT("Error - Apple in PC"), MB_OK );
-			strMessage.Format( TEXT("Remove status file to fix this error:\n%s"), strStatusFile );
-			this->MessageBox( strMessage, TEXT("Error - Apple in PC"), MB_OK );
+			this->MessageBox(TEXT("Fail to load last state"), TEXT("Error - Apple in PC"), MB_OK);
+			strMessage.Format(TEXT("Remove status file to fix this error:\n%s"), strStatusFile);
+			this->MessageBox(strMessage, TEXT("Error - Apple in PC"), MB_OK);
 			exit(1);
 			return 1;
 		}
 	}
+	if (!option.m_strStatePath.IsEmpty())
+	{
+		g_pBoard->SetStateFilePath(option.m_strStatePath, option.m_bSaveOnExit);
+	}
+	if (!option.m_strDisk1Path.IsEmpty())
+	{
+		g_pBoard->m_cSlots.SetDiskette1(option.m_strDisk1Path);
+	}
+	if (!option.m_strDisk2Path.IsEmpty())
+	{
+		g_pBoard->m_cSlots.SetDiskette2(option.m_strDisk1Path);
+	}
+	if (!option.m_strHardDiskPath.IsEmpty())
+	{
+		g_pBoard->m_cSlots.SetHardDisk(option.m_strHardDiskPath);
+	}
+	if (option.m_bReboot == TRUE)
+	{
+		g_pBoard->Reboot();
+	}
+	m_bDoubleSize = m_wndView.IsDoubleSized();
 
 	RECT rc;
 	::GetWindowRect( m_hWnd, &rc );
@@ -311,40 +309,9 @@ void CMainFrame::OnClose()
 {
 	CFile file;
 	CString strStatusFile = GetStatusFilePath();
-	if ( file.Open( strStatusFile, CFile::modeCreate | CFile::modeWrite ) )
+	if (g_pBoard->SaveState(strStatusFile) == FALSE)
 	{
-		CArchive ar(&file, CArchive::store);
-
-		g_pBoard->Suspend(TRUE);
-
-		int nVal, nVal2;
-		try
-		{
-			g_nSerializeVer = STATUS_VERSION;
-
-			ar << STATUS_MAGIC;
-			ar << STATUS_VERSION;
-			ar << m_bDoubleSize;
-			g_pBoard->Serialize(ar);
-			ar << g_DXSound.GetPan();
-			ar << g_DXSound.GetVolume();
-			ar << g_DXSound.m_bMute;
-			g_cDIKeyboard.GetDelayTime( &nVal, &nVal2 );
-			ar << nVal;
-			ar << nVal2;
-		}
-		catch (CFileException* fe)
-		{
-			(void)fe;
-			this->MessageBox( TEXT("Fail to store current state"), TEXT("Error - Apple in PC"), MB_OK );
-		}
-		catch (CArchiveException* ae)
-		{
-			(void)ae;
-			this->MessageBox( TEXT("Fail to store current state"), TEXT("Error - Apple in PC"), MB_OK );
-		}
-		ar.Close();
-		file.Close();
+		this->MessageBox(TEXT("Fail to store current state"), TEXT("Error - Apple in PC"), MB_OK);
 	}
 	g_pBoard->Exit();
 
@@ -481,6 +448,26 @@ void CMainFrame::OnUpdatePower(CCmdUI* pCmdUI)
 
 LRESULT CMainFrame::OnReqAcquire(WPARAM wParam, LPARAM lParam)
 {
+	if (lParam == (LPARAM)&g_cDIKeyboard)
+	{
+		if (wParam)
+		{
+			g_pBoard->m_keyboard.SetCapsLock((GetKeyState(VK_CAPITAL) & 0x0001) == 0);
+			g_pBoard->m_keyboard.SetScrollLock((GetKeyState(VK_SCROLL) & 0x0001) != 0);
+			m_wndStatusBar.SetKeyStatus(KEY_STATE_CAPTURE, true);
+		}
+		else
+		{
+			BYTE abyKeyState[256];
+			if (GetKeyboardState(abyKeyState) != FALSE)
+			{
+				abyKeyState[VK_SCROLL] = g_pBoard->m_keyboard.GetScrollLock() != FALSE;
+				abyKeyState[VK_CAPITAL] = g_pBoard->m_keyboard.GetCapsLock() == FALSE;
+				SetKeyboardState(abyKeyState);
+			}
+			m_wndStatusBar.SetKeyStatus(KEY_STATE_CAPTURE, false);
+		}
+	}
 	if ( wParam )
 	{
 		if (lParam == (LPARAM)&g_cDIMouse)
@@ -495,8 +482,6 @@ LRESULT CMainFrame::OnReqAcquire(WPARAM wParam, LPARAM lParam)
 				::ClipCursor(&rect);
 			}
 		}
-		g_pBoard->m_keyboard.SetCapsLock((GetKeyState(VK_CAPITAL) & 0x0001) != 0 );
-		g_pBoard->m_keyboard.SetScrollLock((GetKeyState(VK_SCROLL) & 0x0001) != 0);
 	}
 	else
 	{
@@ -509,7 +494,7 @@ LRESULT CMainFrame::OnReqAcquire(WPARAM wParam, LPARAM lParam)
 		if ( m_bFullScreen == TRUE )
 		{
 			m_bFullScreen = FALSE;
-			m_wndView.SetFullScreenMode( FALSE );
+			m_wndView.SetScreenMode(FALSE, m_bDoubleSize);
 			ResizeWindow();
 		}
 		if (m_hCursor != NULL)
@@ -520,6 +505,7 @@ LRESULT CMainFrame::OnReqAcquire(WPARAM wParam, LPARAM lParam)
 			m_hCursor = NULL;
 		}
 	}
+
 	return 0;
 }
 
@@ -552,7 +538,7 @@ void CMainFrame::OnToggleFullScreen()
 		m_stWindowPos.x = rc.left;
 		m_stWindowPos.y = rc.top;
 	}
-	m_wndView.SetFullScreenMode(m_bFullScreen);
+	m_wndView.SetScreenMode(m_bFullScreen, m_bDoubleSize);
 	ResizeWindow();
 }
 
@@ -568,6 +554,8 @@ void CMainFrame::ResizeWindow()
 		this->ShowWindow( SW_SHOWNORMAL );
 	}
 	m_winRect.SetRectEmpty();
+
+	m_wndView.SetScreenMode(m_bFullScreen, m_bDoubleSize);
 
 	if ( m_bFullScreen == TRUE )
 	{
@@ -629,7 +617,7 @@ void CMainFrame::ResizeWindow()
 		RepositionBars(AFX_IDW_CONTROLBAR_FIRST,
 			AFX_IDW_CONTROLBAR_LAST,
 			0, reposQuery, rcClientNow);
-		
+		/*
 		CPoint ptOffset(rcClientNow.left - rcClientStart.left,
 			rcClientNow.top - rcClientStart.top);
 		
@@ -644,7 +632,7 @@ void CMainFrame::ResizeWindow()
 			pwndChild->MoveWindow(rcChild, FALSE);
 			pwndChild = pwndChild->GetNextWindow();
 		}
-		
+		*/
 		CRect rcWindow;
 		GetWindowRect(rcWindow);
 		
@@ -662,7 +650,6 @@ void CMainFrame::ResizeWindow()
 			m_cMenu.CheckMenuItem( ID_2XSCREEN, MF_UNCHECKED );
 		}
 	}
-
 }
 
 static CString GetStatusFilePath()
@@ -695,13 +682,13 @@ void CMainFrame::OnKillFocus(CWnd* pNewWnd)
 
 	m_bKeyboardCapture = g_cDIKeyboard.GetIsActive();
 	TRACE("keyboard capture=%d\n", m_bKeyboardCapture);
-	// TODO: Add your message handler code here
+
 	::PostMessage( m_hWnd, UM_REQACQUIRE, FALSE, (LPARAM)NULL );
 }
 
 void CMainFrame::OnSetFocus(CWnd* pOldWnd)
 {
-	__super::OnSetFocus(pOldWnd);
+	CFrameWnd::OnSetFocus(pOldWnd);
 
 	if (m_bKeyboardCapture == TRUE)
 	{
@@ -711,6 +698,7 @@ void CMainFrame::OnSetFocus(CWnd* pOldWnd)
 	{
 		g_cDIKeyboard.Restore();
 	}
+	::PostMessage(m_hWnd, UM_REQACQUIRE, TRUE, (LPARAM)NULL);
 }
 
 void CMainFrame::OnUpdateDiskette(CCmdUI* pCmdUI) 
@@ -771,6 +759,15 @@ void CMainFrame::OnResume()
 	g_pBoard->Resume();
 }
 
+void CMainFrame::OnSuspendResume()
+{
+	// TODO: Add your command handler code here
+	if (g_pBoard->GetIsSuspended())
+		OnResume();
+	else
+		OnSuspend();
+}
+
 void CMainFrame::OnUpdateSuspend(CCmdUI* pCmdUI)
 {
 	// TODO: Add your command update UI handler code here
@@ -778,13 +775,6 @@ void CMainFrame::OnUpdateSuspend(CCmdUI* pCmdUI)
 		pCmdUI->Enable(TRUE);
 	else
 		pCmdUI->Enable(FALSE);
-
-	const int nSuspendIndex = m_wndToolBar.CommandToIndex(ID_SUSPEND);
-	const int nResumeIndex = m_wndToolBar.CommandToIndex(ID_RESUME);
-	if (nSuspendIndex == -1 || nResumeIndex == -1)
-	{
-		return;
-	}
 	if (g_pBoard->GetIsSuspended())
 	{
 		m_wndToolBar.GetToolBarCtrl().HideButton(ID_SUSPEND, TRUE);
@@ -892,3 +882,4 @@ void CMainFrame::OnRawInput(UINT nInputcode, HRAWINPUT hRawInput)
 
 	CFrameWnd::OnRawInput(nInputcode, hRawInput);
 }
+

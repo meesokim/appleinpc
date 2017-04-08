@@ -34,7 +34,7 @@ CCriticalSection g_keyboardLock;
 CKeyboard::CKeyboard()
 {
 	m_lastKey=0;
-	m_bCaps = FALSE;
+	m_bCaps = TRUE;
 	m_bScroll = FALSE;
 }
 
@@ -52,16 +52,19 @@ void CKeyboard::OnKeyDown(WPARAM wParam, LPARAM lParam)
 	BOOL ctrl = KEYDOWN( DIK_LCONTROL ) || KEYDOWN( DIK_RCONTROL );
 	BOOL alt = KEYDOWN( DIK_LMENU ) || KEYDOWN( DIK_RMENU );
 	BOOL shift = KEYDOWN( DIK_LSHIFT ) || KEYDOWN( DIK_RSHIFT );
+	CJoystick *joy;
+	joy = &g_pBoard->m_joystick;
+	bool bArrowAsPaddle = joy->GetArrowAsPaddle() && m_bScroll;
 
 	if ( lParam == 0 )		// only for key down, not for repeat
 	{
 		switch( wParam )
 		{
 		case DIK_CAPITAL:
-			m_bCaps = !m_bCaps;
+			SetCapsLock(!m_bCaps);
 			return;
 		case DIK_SCROLL:
-			m_bScroll = !m_bScroll;
+			SetScrollLock(!m_bScroll);
 			break;
 		case 0xC6:			// control+pause : break
 			g_pBoard->Reset();
@@ -71,8 +74,6 @@ void CKeyboard::OnKeyDown(WPARAM wParam, LPARAM lParam)
 			if ( ctrl )		// Toggle Full Screen mode
 			{
 				::PostMessage( g_pBoard->m_lpwndMainFrame->m_hWnd, WM_COMMAND, ID_FULL_SCREEN, 0 );
-				//CScreen* pScreen = g_pBoard->m_pScreen;
-				//pScreen->SetFullScreenMode( pScreen->m_bWindowed );		// Toggle Full Screen mode
 				return;
 			}
 			else if ( shift )	// Toggle Message View
@@ -127,6 +128,10 @@ void CKeyboard::OnKeyDown(WPARAM wParam, LPARAM lParam)
 			}
 			break;
 
+		case DIK_F5:
+			::PostMessage(g_pBoard->m_lpwndMainFrame->m_hWnd, WM_COMMAND, ID_SUSPENDRESUME, 0);
+			break;
+
 		default:
 			break;
 		}
@@ -138,7 +143,7 @@ void CKeyboard::OnKeyDown(WPARAM wParam, LPARAM lParam)
 	case DIK_RIGHT:
 	case DIK_DOWN:
 	case DIK_UP:
-		if (m_bScroll == TRUE && akm_shift[DIK_NUMPAD2] == 0)
+		if (bArrowAsPaddle && akm_shift[DIK_NUMPAD2] == 0)
 		{
 			return;
 		}
@@ -159,7 +164,7 @@ void CKeyboard::OnKeyDown(WPARAM wParam, LPARAM lParam)
 	if ( key != 0 )
 	{
 		key |= 0x80;
-		if ( m_bCaps )
+		if ( !m_bCaps )
 		{
 			if ( key >= 0xC1 && key <= 0xDA )
 			{
@@ -241,14 +246,11 @@ void CKeyboard::EnableNumKey(BOOL enable)
 void CKeyboard::SetCapsLock(BOOL bCaps)
 {
 	m_bCaps = bCaps;
+	g_pBoard->m_lpwndMainFrame->m_wndStatusBar.SetKeyStatus(KEY_STATE_CAPS, bCaps);
 }
 
 void CKeyboard::SetScrollLock(BOOL bScroll)
 {
 	m_bScroll = bScroll;
-}
-
-BOOL CKeyboard::GetScrollLock()
-{
-	return m_bScroll;
+	g_pBoard->m_lpwndMainFrame->m_wndStatusBar.SetKeyStatus(KEY_STATE_SCROLL, bScroll);
 }

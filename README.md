@@ -1,6 +1,6 @@
-# Apple in PC
+# Apple in a PC
 
-AIPC(Apple in PC) is an Apple //e computer emulator for Windows.
+AIPC(Apple in a PC) is an Apple //e computer emulator for Windows.
 
 AIPC is open source under GPL and free to use.
 
@@ -22,4 +22,4 @@ Latest release:
   https://github.com/sosaria7/appleinpc/releases/latest
 
 Screen shots:
-  https://github.com/sosaria7/appleinpc/wiki/Apple-in-PC---Screen-Shot
+  https://github.com/sosaria7/appleinpc/wiki/Apple-in-a-PC---Screen-Shot
